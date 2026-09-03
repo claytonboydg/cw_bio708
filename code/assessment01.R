@@ -107,10 +107,12 @@ avg_wt
 
 # 17: Identify the heaviest car make (`wt`) among cars with 6 cylinders (`cyl`).
 # Hint - `filter()` and `arrange()` functions.
+
+# create new data frame with only 6 cyl cars, descending by wt
 df_mtcars_6cyl <- df_mtcars %>% 
   filter(cyl == 6) %>% 
   arrange(desc(wt))
-
+# identify the make of the heaviest 6cyl car
 heaviest_car_6cyl <- df_mtcars_6cyl$make[1]
 
 # 18: Create a histogram showing the distribution of 1/4 mile time (`qsec`).
