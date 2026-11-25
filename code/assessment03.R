@@ -9,6 +9,8 @@
 library(tidyverse)
 library(janitor)
 library(patchwork)
+library(MuMIn)
+options(na.action = "na.fail") # set for MuMIn package
 
 # CO2 dataset -------------------------------------------------------------
 
@@ -44,14 +46,15 @@ df_co2 <- clean_names(df_co2)
 # - Create separate panels for each plant type (Quebec vs Mississippi) and combine the plots.
 
 # quebec plot
-quebec_plot <- df_co2 %>% 
+quebec_plot <- df_co2 %>% filter(type == "Quebec") %>% 
   ggplot(aes(x = conc, y = uptake, color = treatment)) +
   geom_point() +
   labs(x = "ambient [CO2] (ml/L)",
-       y = "CO2 assimilation (µmol/m²/sec)")
+       y = "CO2 assimilation (µmol/m²/sec)",
+       title = "CO2 assimilation vs ambient [CO2] in Quebec (top) and Mississippi (bottom)")
 
 # mississippi plot
-ms_plot <- df_co2 %>% 
+ms_plot <- df_co2 %>% filter(type == "Mississippi") %>% 
   ggplot(aes(x = conc, y = uptake, color = treatment)) +
   geom_point() +
   labs(x = "ambient [CO2] (ml/L)",
@@ -75,6 +78,21 @@ quebec_plot / ms_plot
 # 
 # Fit these models separately for each plant origin.
 
+## Quebec model
+df_quebec <- df_co2 %>% filter(type == "Quebec")
+
+m_quebec <- lm(uptake ~ conc * treatment,
+               data = df_quebec)
+
+summary(m_quebec) # significant intercept & coefficient for ambient CO2
+
+## Mississippi model
+df_ms <- df_co2 %>% filter(type == "Mississippi")
+
+m_ms <- lm(uptake ~ conc * treatment,
+           data = df_ms)
+
+summary(m_ms) # significant intercept & coefficients for all predictors and their interaction
 
 # Q5
 # Based on the models fitted in Q4 for Quebec and Mississippi plants,
@@ -86,6 +104,25 @@ quebec_plot / ms_plot
 # ENTER YOUR ANSWER HERE as COMMENT:
 # (no coding required for this question)
 
+# For plants from Quebec, CO2 assimilation increased as ambient CO2 concentrations increased (to a point),
+# as demonstrated by the significant effect of 'conc' in the Quebec model (p = 9.43e-12). 
+# There was no effect of the treatment (chilled vs non-chilled), as demonstrated by a lack of
+# significant coefficients for both the treatment and the treatment x concentration interaction.
+# In the figure, the chilled Quebec plants (teal-colored points) appear to have slightly lower CO2 uptake rates as
+# compared to the non-chilled plants (salmon-colored points), but evidently the difference is small and not statistically
+# significant in this model.
+
+# Mississippi plants showed a similar qualitative trend, with increasing CO2 assimilation as
+# ambient CO2 concentrations increased (to a point) (significant effect of 'conc' -- p = 1.02e-12).
+# However, in the Mississippi data, there was also a significant effect of treatment (p = 0.0233)
+# and a significant interaction between conc and treatment (p = 0.0482). As can be seen in the
+# figure (bottom panel), the chilled and non-chilled treatments clearly diverge, with the 
+# non-chilled plants (salmon-colored points) assimilating CO2 at a significantly faster rate 
+# than the chilled plants (teal-colored points).
+
+# From an ecological perspective, this result isn't surprising. I would expect plants in Quebec
+# to be more adapted to chilly conditions, whereas Mississippi plants probably aren't so
+# adapted to colder temperatures.
 
 # BCI data ----------------------------------------------------------------
 
@@ -151,13 +188,14 @@ df_env <- BCI.env %>%
 
 # Q6
 # Convert column names of `df_env` to lowercase and reassign to `df_env`
-
+df_env <- clean_names(df_env)
 
 # Q7
 # In `df_env`, some environmental variables have no variation between plots
 # (i.e., the same value for all plots). Identify these columns and remove them
 # from the dataframe. Assign the resulting dataframe to `df_env_sub`.
 
+df_env_sub <- remove_constant(df_env)
 
 # Q8
 # Calculate summary statistics for each plot using `df_bci`.
@@ -170,11 +208,17 @@ df_env <- BCI.env %>%
 #
 # Assign the resulting dataframe to `df_n`.
 
+df_n <- df_bci %>% 
+  group_by(plot) %>% 
+  summarize(n_sum = sum(count),
+             n1 = max(count),
+             p = n1 / n_sum)
 
 # Q9
 # Combine the summary data (`df_n`) with the environmental variables
 # (`df_env_sub`) for each plot. Assign the resulting dataframe to `df_m`.
 
+df_m <- merge(df_env_sub, df_n, by = "plot")
 
 # Q10
 # Develop a statistical model to explain variation in the proportion of the dominant
@@ -183,4 +227,23 @@ df_env <- BCI.env %>%
 # - Use model selection based on predictability (i.e., out-of-sample prediction) 
 # rather than the goodness of fit, and report which variables are included in 
 # the best predictive model as a comment.
+
+# run full model; use cbind to combine 'successes' (dominant species) and 'failures' (# of individuals not in dominant species)
+m_binom <- glm(cbind(n1, n_sum - n1) ~ env_het + stream + habitat,
+               data = df_m,
+               family = "binomial")
+
+summary(m_binom)
+
+# select best model based on AIC (out-of-sample prediction)
+m_select <- dredge(m_binom, rank = "AIC")
+m_subset <- subset(m_select, delta < 2) # identify top models
+
+m_subset
+# BEST MODEL includes environmental heterogeneity and habitat as predictors
+# best model does not include stream, but the second best model which has a delta of 2,
+# indicating that it is comparable in strength to the top model, does include stream
+# in addition to environmental heterogeneity and habitat
+
+
 
